@@ -1,3 +1,4 @@
 **/_chat.txt
 **/_chat_processed.txt
 **/__pycache__
+**/chat_model.p

@@ -3,17 +3,18 @@ import re
 
 import torch
 from torch.utils.data.dataset import Dataset
-from torch.nn.utils.rnn import pad_sequence
 
 from collections import Counter
+
 
 def preprocess_data(chat_dir):
     chat_path = os.path.join(chat_dir, "_chat.txt")
     out_path = os.path.join(chat_dir, "_chat_processed.txt")
     senders_dict = dict()
     with open(chat_path, "r", encoding="utf8") as infile, open(out_path, "w", encoding="utf8") as outfile:
-        prev_sender = ""
+        prev_sender = None
         group_name = None
+        new_line = ""
         for line in infile:
             line = line.strip()
             line = line.lower()
@@ -29,28 +30,36 @@ def preprocess_data(chat_dir):
 
             if sender:
                 sender = sender[0].replace(":", "")
-                prev_sender = sender
 
                 if sender not in senders_dict.keys():
                     senders_dict[sender] = len(senders_dict)
 
                 text = line[23 + len(sender):]
+
                 if len(text) == 0:
                     continue
 
-                new_line = sender + ':' + text + "\n"
+                if prev_sender != sender:
+                    if prev_sender is not None:
+                        outfile.write(new_line + "\n")
+                    prev_sender = sender
+                    new_line = sender + ':' + text
+                else:
+                    new_line = new_line + ' ' + text
             else:
                 if len(line) == 0:
                     continue
-                new_line = prev_sender + ':' + line + "\n"
-            outfile.write(new_line)
+                new_line = new_line + ' ' + line
+
+        outfile.write(new_line + "\n")
     return senders_dict
 
 
 def remove_line(line, group_name):
     omit_types = ["audio", "image", "GIF", "sticker",
                   "video", "contact card", "document"]
-    omit_messages = [type.lower() + " omitted" for type in omit_types]
+    omit_messages = [type.lower() + " omitted" for type in omit_types] + \
+        ["deleted this message", "message was deleted"]
     system_messages = [group_name + ":", "created group", "changed the subject to", "changed the group description", "no longer an admin", "now an admin", "changed this group's icon",
                        "messages and calls are end-to-end encrypted. no one outside of this chat, not even whatsapp, can read or listen to them."]
     location_messages = ["location:", "see my real-time location on maps:"]
@@ -62,6 +71,7 @@ def remove_line(line, group_name):
 
 def tokenize(text):
     return [s.lower() for s in re.split(r'\W+', text) if len(s) > 0]
+
 
 def create_vocab(chat_dir, sender_indices, threshold=1):
     data_path = os.path.join(chat_dir, "_chat_processed.txt")
@@ -85,6 +95,7 @@ def create_vocab(chat_dir, sender_indices, threshold=1):
             continue
         vocab[token] = len(vocab)
     return vocab, tokenized_data, lines
+
 
 class ChatDataset(Dataset):
     def __init__(self, data):
